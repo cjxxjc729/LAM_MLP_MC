@@ -1,0 +1,188 @@
+# Test of MEAM potential for SiC system
+units           metal
+boundary        p p p
+atom_style      atomic
+atom_modify     map array sort 0 0.0
+
+label           loopb
+variable        b loop 1
+if              "${b} == 1" then &
+                "read_data       blank.data" &
+                else &
+                "read_restart     restart.equil"
+
+mass 1 107.868200 # Ag
+mass 2 26.981539 # Al
+mass 3 1 # As
+mass 4 196.96654 # Au
+mass 5 10.811 # B
+mass 6 208.98038 # Bi
+mass 7 12.0100 # C
+mass 8 40.078 # Ca
+mass 9 112.4 # Cd
+mass 10 35.4532000 # Cl
+mass 11 58.93300 # Co
+mass 12 51.996 # Cr
+mass 13 132.90543 # Cs
+mass 14 63.546000 # Cu
+mass 15 55.845000 # Fe
+mass 16 1 # Ga
+mass 17 72.64 # Ge
+mass 18 1.00794 # H
+mass 19 178.49 # Hf
+mass 20 1 # Hg
+mass 21 1 # In
+mass 22 192.2170000 # Ir
+mass 23 39.0983 # K
+mass 24 24.3050 # Mg
+mass 25 54.938 # Mn
+mass 26 95.9400 # Mo
+mass 27 14.0067 # N
+mass 28 22.989770 # Na
+mass 29 92.90638 # Nb
+mass 30 58.690000 # Ni
+mass 31 15.9994 # O
+mass 32 1 # Os
+mass 33 30.973762 # P
+mass 34 207.2 # Pb
+mass 35 106.420000 # Pd
+mass 36 195.07800 # Pt
+mass 37 1 # Rb
+mass 38 186.207 # Re
+mass 39 102.90550 # Rh
+mass 40 101.0700 # Ru
+mass 41 32.06500 # S
+mass 42 121.76 # Sb
+mass 43 1 # Sc
+mass 44 78.9600 # Se
+mass 45 28.085 # Si
+mass 46 118.71 # Sn
+mass 47 87.62 # Sr
+mass 48 1 # Ta
+mass 49 1 # Tc
+mass 50 1 # Te
+mass 51 47.867 # Ti
+mass 52 1 # Tl
+mass 53 50.9414 # V
+mass 54 183.8400 # W
+mass 55 88.905 # Y
+mass 56 65.409 # Zn
+mass 57 91.224 # Zr
+
+
+#pair_style      deepmd graph.001.pb graph.000.pb graph.002.pb graph.003.pb  out_freq 100 out_file model_devi.out
+pair_style      deepmd OC_10M.pb
+pair_coeff      * * 
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no
+
+#-----------------------some global parameters----------------
+variable        e equal pe
+variable        seed equal 582783
+fix             2 all nvt temp 3000.0 3000.0 1.0
+run             0
+variable        step equal 1
+variable        enow equal $e
+variable        dumpa equal 100
+#-----------------------entering the main loop-------------------
+
+label           loopa
+variable        a loop 1000
+thermo          1
+
+
+if                "${a}==${dumpa}" then &
+                  "dump            ${a} all custom 1 traj/${b}_${a}.lammpstrj id type x y z" &
+                  "variable        dumpa equal ${dumpa}+50"
+
+compute         $a all temp
+timestep        0.001  # 0.001 means 1fs
+#----------------------swithc di1 and id2 ------------------------#
+#----------------id 1 and id 2 chosen----------------------
+group           mc_atoms type mc_atoms_index_put_here
+variable        N_mc_atoms equal count(mc_atoms)
+
+label           loop_site_select
+variable        a1 loop 100
+
+variable        irandom equal floor(${N_mc_atoms}*random(0.0,1.0,${seed})+1)
+variable        id1 equal ${irandom}
+variable        id2 equal ${irandom}
+variable        type1 equal type[${id1}]
+variable        type2 equal type[${id2}]
+if              "${type1} != ${type2}" then &
+                  "print 'types for switch are different, quit loop_site_select'" &
+                  "jump SELF break_site_select" &
+                else &
+                  "print 'types for switch are the same, repeat !'" 
+                
+
+next            a1
+jump            SELF loop_site_select
+label           break_site_select
+
+#------------------end--------------------------
+variable        rn equal random(0.0,1.0,${seed})   #rn is used to compare with accpro
+
+variable        x atom x
+variable        y atom y
+variable        z atom z
+
+variable      xt equal x[${id1}]
+variable      x1 equal ${xt}
+variable      yt equal y[${id1}]
+variable      y1 equal ${yt}
+variable      zt equal z[${id1}]
+variable      z1 equal ${zt}
+
+variable      xt equal x[${id2}]
+variable      x2 equal ${xt}
+variable      yt equal y[${id2}]
+variable      y2 equal ${yt}
+variable      zt equal z[${id2}]
+variable      z2 equal ${zt}
+
+print          "x = ${x1}"
+set             atom ${id1} x ${x2} y ${y2} z ${z2}
+set             atom ${id2} x ${x1} y ${y1} z ${z1}
+
+variable        elast equal ${enow}
+print           '  elast = ${elast}'
+run             0
+
+variable        eattempt equal $e
+variable        fmetropolice equal exp((${elast}-${eattempt})/0.025875)
+print           '  fmetropolice =${fmetropolice}'
+if              "${fmetropolice}>1" then &
+                  "variable accpro equal 1" &
+                else &
+                  "variable accpro equal ${fmetropolice}"
+
+print           'eattempt=${eattempt}'
+print           'accpro =${accpro}'
+print           'rn = ${rn}'
+
+if              "${rn}<${accpro}" then &
+                  "print  'accept the change'" &
+                  "variable        enow equal ${eattempt}" &
+                else &
+                  "print  'reject the change, reverse the cordination'" &
+                  "set             atom ${id1} x ${x1} y ${y1} z ${z1}" &
+                  "set             atom ${id2} x ${x2} y ${y2} z ${z2}" &
+                  "variable        enow equal ${elast}"
+
+variable        step equal ${step}+1
+print           "  step =${step}"
+print           "  Energy = ${enow}"
+print           ' switch ${id1} and ${id2}'
+print           "-------===--------"
+next a
+jump SELF loopa
+write_restart restart.equil  #when a loop is end, save it to restart.equil, and clear the memory
+clear 
+next b
+jump SELF loopb  
+
+
+
+

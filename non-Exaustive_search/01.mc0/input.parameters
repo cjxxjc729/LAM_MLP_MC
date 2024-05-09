@@ -1,0 +1,16 @@
+#
+f_str = blank.cif
+elements_pool = Mo Cr Mn V Zn Cu Y Zr Nb Ag Pt Au W Ru Rh
+f_dp = /public1/home/sch0149/work/my_work/10.nsfc_2024_test/OC_10M.pb
+
+#
+
+nelement_chose = 5.0 
+P_list = 0.2 0.2 0.2 0.2 0.2
+
+
+#
+work_dir = ./material_lmp
+
+n_loop_time = 250.0
+opt_script = ./run_lmp_in_fids.sh
